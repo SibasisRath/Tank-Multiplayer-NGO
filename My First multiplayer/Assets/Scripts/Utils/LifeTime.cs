@@ -8,8 +8,6 @@ public class LifeTime : MonoBehaviour
     private IEnumerator Start()
     {
         yield return new WaitForSeconds(lifeTimeDuration);
-        Debug.Log("destroyed due to time up.");
-        //Destroy(gameObject, lifeTimeDuration);
         Destroy(this.gameObject);
     }
 }
