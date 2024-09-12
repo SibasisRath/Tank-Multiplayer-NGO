@@ -1,11 +1,11 @@
-using System;
 using Unity.Netcode;
+using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 public class ProjectileLauncher : NetworkBehaviour
 {
     [SerializeField] private InputReader inputReader;
+    [SerializeField] private CoinWallet wallet;
     [SerializeField] private Transform ProjectileSpawnPoint;
     [SerializeField] private GameObject serverProjectilePrefab;
     [SerializeField] private GameObject clientProjectilePrefab;
@@ -16,9 +16,10 @@ public class ProjectileLauncher : NetworkBehaviour
     [SerializeField] private float projectileSpeed;
     [SerializeField] private float fireRate;
     [SerializeField] private float muzzleFlashDuration;
+    [SerializeField] private int costToFire;
 
     private bool shouldFire;
-    private float previousFireTime;
+    private float timer;
     private float muzzleFlashTimmer;
 
     public override void OnNetworkSpawn()
@@ -48,11 +49,14 @@ public class ProjectileLauncher : NetworkBehaviour
             }
         }
         if (!IsOwner) { return; }
+        if (timer > 0) { timer -= Time.deltaTime; }
+        
         if (!shouldFire) { return; }
-        if (Time.time < (1/fireRate) + previousFireTime) { return; }
+        if (timer > 0) { return; }
+        if (wallet.totalCoins.Value < costToFire) { return;}
         PrimaryFireServerRpc(ProjectileSpawnPoint.position, ProjectileSpawnPoint.up);
         SpawnDummyProjectile(ProjectileSpawnPoint.position, ProjectileSpawnPoint.up);
-        previousFireTime = Time.time;
+        timer = 1 / fireRate;
     }
 
     private void SpawnDummyProjectile(Vector3 position, Vector3 dir)
@@ -83,6 +87,8 @@ public class ProjectileLauncher : NetworkBehaviour
     [ServerRpc]
     private void PrimaryFireServerRpc(Vector3 spawnPos, Vector3 dir)
     {
+        if (wallet.totalCoins.Value < costToFire) { return; }
+        wallet.SpendCoins(costToFire);
         GameObject projectileInstance = Instantiate(
             serverProjectilePrefab,
             spawnPos,
@@ -90,6 +96,8 @@ public class ProjectileLauncher : NetworkBehaviour
         projectileInstance.transform.up = dir;
 
         Physics2D.IgnoreCollision(playerColider, projectileInstance.GetComponent<Collider2D>());
+
+        if (projectileInstance.TryGetComponent<DealDamageOnContact>(out DealDamageOnContact obj)) { obj.SetOwner(OwnerClientId); }
 
         if (projectileInstance.TryGetComponent<Rigidbody2D>(out Rigidbody2D rb))
         {
