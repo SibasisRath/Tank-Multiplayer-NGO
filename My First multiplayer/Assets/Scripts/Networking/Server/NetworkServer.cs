@@ -7,6 +7,8 @@ public class NetworkServer : IDisposable
 {
     private NetworkManager networkManager;
 
+    public Action<string> OnClientLeft;
+
     private Dictionary<ulong, string> clientIdToAuth = new ();
     private Dictionary<string, UserData> authIdToUserData = new ();
     public NetworkServer(NetworkManager networkManager) 
@@ -27,6 +29,7 @@ public class NetworkServer : IDisposable
         {
             clientIdToAuth.Remove(clientId);
             authIdToUserData.Remove(authId);
+            OnClientLeft?.Invoke(authId);
         }
     }
 
@@ -41,16 +44,31 @@ public class NetworkServer : IDisposable
         authIdToUserData[userData.userAuthId] = userData;
 
         response.Approved = true;
+        response.Position = SpawnPoint.GetRandomSpawnPos();
+        response.Rotation = Quaternion.identity;
         response.CreatePlayerObject = true;
+    }
+
+    public UserData GetUserDataByClientId(ulong clientId) 
+    {
+        if (clientIdToAuth.TryGetValue(clientId, out string authId))
+        {
+            if (authIdToUserData.TryGetValue(authId, out UserData userData)) 
+            {
+                return userData;
+            }
+            return null;
+        }
+        return null;
     }
 
     public void Dispose()
     {
         if (networkManager != null)
         {
-            networkManager.ConnectionApprovalCallback += AprovalCheck;
-            networkManager.OnServerStarted += OnNetworkReady;
-            networkManager.OnClientDisconnectCallback += OnClientDisconnect;
+            networkManager.ConnectionApprovalCallback -= AprovalCheck;
+            networkManager.OnServerStarted -= OnNetworkReady;
+            networkManager.OnClientDisconnectCallback -= OnClientDisconnect;
         }
         if (networkManager.IsListening)
         {

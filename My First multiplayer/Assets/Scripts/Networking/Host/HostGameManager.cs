@@ -17,13 +17,14 @@ using UnityEngine.SceneManagement;
 public class HostGameManager : IDisposable
 {
     private Allocation allocation;
-    private const int MaxConnections = 20;
-    private const string GameSceneName = "Game";
-    private const string ConnectionType = "dtls";
     private string joinCode;
     private string lobbyId;
 
-    private NetworkServer networkServer;
+    public NetworkServer NetworkServer { get; private set; }
+    public string JoinCode { get => joinCode; }
+
+    private const int MaxConnections = 20;
+    private const string GameSceneName = "Game";
 
     public async Task StartHostAsync()
     {
@@ -47,47 +48,54 @@ public class HostGameManager : IDisposable
             Debug.Log(e);
             return;
         }
-        UnityTransport unityTransport = NetworkManager.Singleton.GetComponent<UnityTransport>();
 
-        RelayServerData relayServerData = new(allocation, ConnectionType);
-        unityTransport.SetRelayServerData(relayServerData);
+        UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+
+        RelayServerData relayServerData = new RelayServerData(allocation, "dtls");
+        transport.SetRelayServerData(relayServerData);
 
         try
         {
             CreateLobbyOptions lobbyOptions = new CreateLobbyOptions();
             lobbyOptions.IsPrivate = false;
-            lobbyOptions.Data = new Dictionary<string, DataObject>() 
+            lobbyOptions.Data = new Dictionary<string, DataObject>()
             {
                 {
-                    "joinCode", new DataObject(visibility: DataObject.VisibilityOptions.Member, value: joinCode)
+                    "JoinCode", new DataObject(
+                        visibility: DataObject.VisibilityOptions.Member,
+                        value: joinCode
+                    )
                 }
             };
-            string playerName = PlayerPrefs.GetString(NameSelection.playerNameKey, "Missing Name");
-            Lobby lobby = await Lobbies.Instance.CreateLobbyAsync($"{playerName}'s Lobby", MaxConnections,lobbyOptions);
-            lobbyId = lobby.Id;  
-            
+            string playerName = PlayerPrefs.GetString(NameSelection.playerNameKey, "Unknown");
+            Lobby lobby = await Lobbies.Instance.CreateLobbyAsync(
+                $"{playerName}'s Lobby", MaxConnections, lobbyOptions);
+
+            lobbyId = lobby.Id;
+
             HostSingleton.Instance.StartCoroutine(HearbeatLobby(15));
         }
-        catch (LobbyServiceException e) 
-        { 
+        catch (LobbyServiceException e)
+        {
             Debug.Log(e);
             return;
         }
 
-        networkServer = new(NetworkManager.Singleton);
+        NetworkServer = new NetworkServer(NetworkManager.Singleton);
 
         UserData userData = new UserData
         {
             userName = PlayerPrefs.GetString(NameSelection.playerNameKey, "Missing Name"),
             userAuthId = AuthenticationService.Instance.PlayerId
         };
+        string payload = JsonUtility.ToJson(userData);
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
 
-        string playLoad = JsonUtility.ToJson(userData);
-        byte[] playLoadByte = Encoding.UTF8.GetBytes(playLoad);
-
-        NetworkManager.Singleton.NetworkConfig.ConnectionData = playLoadByte;
+        NetworkManager.Singleton.NetworkConfig.ConnectionData = payloadBytes;
 
         NetworkManager.Singleton.StartHost();
+
+        NetworkServer.OnClientLeft += HandleClientLeft;
 
         NetworkManager.Singleton.SceneManager.LoadScene(GameSceneName, LoadSceneMode.Single);
     }
@@ -102,9 +110,15 @@ public class HostGameManager : IDisposable
         }
     }
 
-    public async void Dispose()
+    public void Dispose()
+    {
+        Shutdown();
+    }
+
+    public async void Shutdown()
     {
         HostSingleton.Instance.StopCoroutine(nameof(HearbeatLobby));
+
         if (!string.IsNullOrEmpty(lobbyId))
         {
             try
@@ -113,11 +127,26 @@ public class HostGameManager : IDisposable
             }
             catch (LobbyServiceException e)
             {
-                Debug.LogException(e);
+                Debug.Log(e);
             }
 
             lobbyId = string.Empty;
         }
-        networkServer?.Dispose();
+
+        NetworkServer.OnClientLeft -= HandleClientLeft;
+
+        NetworkServer?.Dispose();
+    }
+
+    private async void HandleClientLeft(string authId)
+    {
+        try
+        {
+            await LobbyService.Instance.RemovePlayerAsync(lobbyId, authId);
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.Log(e);
+        }
     }
 }
