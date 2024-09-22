@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
@@ -16,9 +15,10 @@ public class HealingZone : NetworkBehaviour
     [SerializeField] private int coinsPerTick = 10;
     [SerializeField] private int healthPerTick = 10;
 
-    private List<TankPlayer> playersInZone = new List<TankPlayer>();
     private float remainingCooldown;
     private float tickTimer;
+    private List<TankPlayer> playersInZone = new List<TankPlayer>();
+
     private NetworkVariable<int> HealPower = new NetworkVariable<int>();
 
     public override void OnNetworkSpawn()
@@ -42,12 +42,6 @@ public class HealingZone : NetworkBehaviour
             HealPower.OnValueChanged -= HandleHealPowerChanged;
         }
     }
-
-    private void HandleHealPowerChanged(int oldHealPower, int newHealPower)
-    {
-        healPowerBar.fillAmount = (float)newHealPower / maxHealPower;
-    }
-
 
     private void OnTriggerEnter2D(Collider2D col)
     {
@@ -92,9 +86,9 @@ public class HealingZone : NetworkBehaviour
             {
                 if (HealPower.Value == 0) { break; }
 
-                if (player.Health.currentHealth.Value == player.Health.maxHealth) { continue; }
+                if (player.Health.CurrentHealth.Value == player.Health.MaxHealth) { continue; }
 
-                if (player.Wallet.totalCoins.Value < coinsPerTick) { continue; }
+                if (player.Wallet.TotalCoins.Value < coinsPerTick) { continue; }
 
                 player.Wallet.SpendCoins(coinsPerTick);
                 player.Health.RestoreHealth(healthPerTick);
@@ -111,4 +105,9 @@ public class HealingZone : NetworkBehaviour
         }
     }
 
+    private void HandleHealPowerChanged(int oldHealPower, int newHealPower)
+    {
+        healPowerBar.fillAmount = (float)newHealPower / maxHealPower;
+    }
 }
+

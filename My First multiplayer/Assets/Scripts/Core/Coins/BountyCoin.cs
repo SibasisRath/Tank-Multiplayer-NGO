@@ -1,7 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
 public class BountyCoin : Coin
 {
     public override int Collect()
@@ -12,13 +8,12 @@ public class BountyCoin : Coin
             return 0;
         }
 
-        if (coinCollected) { return 0; }
+        if (alreadyCollected) { return 0; }
 
-        coinCollected = true;
+        alreadyCollected = true;
 
         Destroy(gameObject);
 
         return coinValue;
     }
 }
-

@@ -1,13 +1,11 @@
-using System.Collections;
 using UnityEngine;
 
-public class LifeTime : MonoBehaviour
+public class Lifetime : MonoBehaviour
 {
-    [SerializeField] private float lifeTimeDuration = 1f;
+    [SerializeField] private float lifetime = 1f;
 
-    private IEnumerator Start()
+    private void Start()
     {
-        yield return new WaitForSeconds(lifeTimeDuration);
-        Destroy(this.gameObject);
+        Destroy(gameObject, lifetime);
     }
 }

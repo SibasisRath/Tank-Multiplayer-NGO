@@ -17,16 +17,22 @@ using UnityEngine.SceneManagement;
 public class HostGameManager : IDisposable
 {
     private Allocation allocation;
-    private string joinCode;
+    private NetworkObject playerPrefab;
+
     private string lobbyId;
 
+    public string JoinCode { get; private set; }
     public NetworkServer NetworkServer { get; private set; }
-    public string JoinCode { get => joinCode; }
 
     private const int MaxConnections = 20;
     private const string GameSceneName = "Game";
 
-    public async Task StartHostAsync()
+    public HostGameManager(NetworkObject playerPrefab)
+    {
+        this.playerPrefab = playerPrefab;
+    }
+
+    public async Task StartHostAsync(bool isPrivate)
     {
         try
         {
@@ -40,8 +46,8 @@ public class HostGameManager : IDisposable
 
         try
         {
-            joinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
-            Debug.Log(joinCode);
+            JoinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            Debug.Log(JoinCode);
         }
         catch (Exception e)
         {
@@ -57,17 +63,17 @@ public class HostGameManager : IDisposable
         try
         {
             CreateLobbyOptions lobbyOptions = new CreateLobbyOptions();
-            lobbyOptions.IsPrivate = false;
+            lobbyOptions.IsPrivate = isPrivate;
             lobbyOptions.Data = new Dictionary<string, DataObject>()
             {
                 {
                     "JoinCode", new DataObject(
                         visibility: DataObject.VisibilityOptions.Member,
-                        value: joinCode
+                        value: JoinCode
                     )
                 }
             };
-            string playerName = PlayerPrefs.GetString(NameSelection.playerNameKey, "Unknown");
+            string playerName = PlayerPrefs.GetString(NameSelector.PlayerNameKey, "Unknown");
             Lobby lobby = await Lobbies.Instance.CreateLobbyAsync(
                 $"{playerName}'s Lobby", MaxConnections, lobbyOptions);
 
@@ -81,11 +87,11 @@ public class HostGameManager : IDisposable
             return;
         }
 
-        NetworkServer = new NetworkServer(NetworkManager.Singleton);
+        NetworkServer = new NetworkServer(NetworkManager.Singleton, playerPrefab);
 
         UserData userData = new UserData
         {
-            userName = PlayerPrefs.GetString(NameSelection.playerNameKey, "Missing Name"),
+            userName = PlayerPrefs.GetString(NameSelector.PlayerNameKey, "Missing Name"),
             userAuthId = AuthenticationService.Instance.PlayerId
         };
         string payload = JsonUtility.ToJson(userData);
@@ -117,21 +123,20 @@ public class HostGameManager : IDisposable
 
     public async void Shutdown()
     {
+        if (string.IsNullOrEmpty(lobbyId)) { return; }
+
         HostSingleton.Instance.StopCoroutine(nameof(HearbeatLobby));
 
-        if (!string.IsNullOrEmpty(lobbyId))
+        try
         {
-            try
-            {
-                await Lobbies.Instance.DeleteLobbyAsync(lobbyId);
-            }
-            catch (LobbyServiceException e)
-            {
-                Debug.Log(e);
-            }
-
-            lobbyId = string.Empty;
+            await Lobbies.Instance.DeleteLobbyAsync(lobbyId);
         }
+        catch (LobbyServiceException e)
+        {
+            Debug.Log(e);
+        }
+
+        lobbyId = string.Empty;
 
         NetworkServer.OnClientLeft -= HandleClientLeft;
 

@@ -4,12 +4,11 @@ using UnityEngine;
 
 public class SpawnPoint : MonoBehaviour
 {
-    private static List<SpawnPoint> spawnPoints = new ();
-
+    private static List<SpawnPoint> spawnPoints = new List<SpawnPoint>();
 
     private void OnEnable()
     {
-        spawnPoints.Add (this);
+        spawnPoints.Add(this);
     }
 
     private void OnDisable()
@@ -23,6 +22,7 @@ public class SpawnPoint : MonoBehaviour
         {
             return Vector3.zero;
         }
+
         return spawnPoints[Random.Range(0, spawnPoints.Count)].transform.position;
     }
 

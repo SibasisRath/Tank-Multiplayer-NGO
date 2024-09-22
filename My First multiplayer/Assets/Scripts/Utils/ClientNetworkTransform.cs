@@ -7,11 +7,12 @@ public class ClientNetworkTransform : NetworkTransform
         base.OnNetworkSpawn();
         CanCommitToTransform = IsOwner;
     }
+
     protected override void Update()
     {
         CanCommitToTransform = IsOwner;
         base.Update();
-        if(NetworkManager != null)
+        if (NetworkManager != null)
         {
             if (NetworkManager.IsConnectedClient || NetworkManager.IsListening)
             {
@@ -22,8 +23,10 @@ public class ClientNetworkTransform : NetworkTransform
             }
         }
     }
+
     protected override bool OnIsServerAuthoritative()
     {
         return false;
     }
 }
+

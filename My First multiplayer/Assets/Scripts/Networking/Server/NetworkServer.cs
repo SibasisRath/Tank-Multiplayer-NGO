@@ -1,21 +1,65 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 
 public class NetworkServer : IDisposable
 {
     private NetworkManager networkManager;
+    private NetworkObject playerPrefab;
+
+    public Action<UserData> OnUserJoined;
+    public Action<UserData> OnUserLeft;
 
     public Action<string> OnClientLeft;
 
-    private Dictionary<ulong, string> clientIdToAuth = new ();
-    private Dictionary<string, UserData> authIdToUserData = new ();
-    public NetworkServer(NetworkManager networkManager) 
+    private Dictionary<ulong, string> clientIdToAuth = new Dictionary<ulong, string>();
+    private Dictionary<string, UserData> authIdToUserData = new Dictionary<string, UserData>();
+
+    public NetworkServer(NetworkManager networkManager, NetworkObject playerPrefab)
     {
         this.networkManager = networkManager;
-        networkManager.ConnectionApprovalCallback += AprovalCheck;
+        this.playerPrefab = playerPrefab;
+
+        networkManager.ConnectionApprovalCallback += ApprovalCheck;
         networkManager.OnServerStarted += OnNetworkReady;
+    }
+
+    public bool OpenConnection(string ip, int port)
+    {
+        UnityTransport transport = networkManager.gameObject.GetComponent<UnityTransport>();
+        transport.SetConnectionData(ip, (ushort)port);
+        return networkManager.StartServer();
+    }
+
+    private void ApprovalCheck(
+        NetworkManager.ConnectionApprovalRequest request,
+        NetworkManager.ConnectionApprovalResponse response)
+    {
+        string payload = System.Text.Encoding.UTF8.GetString(request.Payload);
+        UserData userData = JsonUtility.FromJson<UserData>(payload);
+
+        clientIdToAuth[request.ClientNetworkId] = userData.userAuthId;
+        authIdToUserData[userData.userAuthId] = userData;
+        OnUserJoined?.Invoke(userData);
+
+        _ = SpawnPlayerDelayed(request.ClientNetworkId);
+
+        response.Approved = true;
+        response.CreatePlayerObject = false;
+    }
+
+    private async Task SpawnPlayerDelayed(ulong clientId)
+    {
+        await Task.Delay(1000);
+
+        NetworkObject playerInstance =
+            GameObject.Instantiate(playerPrefab, SpawnPoint.GetRandomSpawnPos(), Quaternion.identity);
+
+        playerInstance.SpawnAsPlayerObject(clientId);
     }
 
     private void OnNetworkReady()
@@ -25,51 +69,38 @@ public class NetworkServer : IDisposable
 
     private void OnClientDisconnect(ulong clientId)
     {
-        if (clientIdToAuth.TryGetValue(clientId, out string authId)) 
+        if (clientIdToAuth.TryGetValue(clientId, out string authId))
         {
             clientIdToAuth.Remove(clientId);
+            OnUserLeft?.Invoke(authIdToUserData[authId]);
             authIdToUserData.Remove(authId);
             OnClientLeft?.Invoke(authId);
         }
     }
 
-    private void AprovalCheck(
-        NetworkManager.ConnectionApprovalRequest request,
-        NetworkManager.ConnectionApprovalResponse response)
-    {
-        string payload = System.Text.Encoding.UTF8.GetString(request.Payload);
-        UserData userData = JsonUtility.FromJson<UserData>(payload);
-
-        clientIdToAuth[request.ClientNetworkId] = userData.userAuthId;
-        authIdToUserData[userData.userAuthId] = userData;
-
-        response.Approved = true;
-        response.Position = SpawnPoint.GetRandomSpawnPos();
-        response.Rotation = Quaternion.identity;
-        response.CreatePlayerObject = true;
-    }
-
-    public UserData GetUserDataByClientId(ulong clientId) 
+    public UserData GetUserDataByClientId(ulong clientId)
     {
         if (clientIdToAuth.TryGetValue(clientId, out string authId))
         {
-            if (authIdToUserData.TryGetValue(authId, out UserData userData)) 
+            if (authIdToUserData.TryGetValue(authId, out UserData data))
             {
-                return userData;
+                return data;
             }
+
             return null;
         }
+
         return null;
     }
 
     public void Dispose()
     {
-        if (networkManager != null)
-        {
-            networkManager.ConnectionApprovalCallback -= AprovalCheck;
-            networkManager.OnServerStarted -= OnNetworkReady;
-            networkManager.OnClientDisconnectCallback -= OnClientDisconnect;
-        }
+        if (networkManager == null) { return; }
+
+        networkManager.ConnectionApprovalCallback -= ApprovalCheck;
+        networkManager.OnClientDisconnectCallback -= OnClientDisconnect;
+        networkManager.OnServerStarted -= OnNetworkReady;
+
         if (networkManager.IsListening)
         {
             networkManager.Shutdown();

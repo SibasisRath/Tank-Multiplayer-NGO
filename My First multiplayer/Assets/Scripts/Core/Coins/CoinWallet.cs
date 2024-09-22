@@ -1,6 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -19,12 +16,8 @@ public class CoinWallet : NetworkBehaviour
 
     private Collider2D[] coinBuffer = new Collider2D[1];
     private float coinRadius;
-    public NetworkVariable<int> totalCoins = new NetworkVariable<int>();
 
-    public void SpendCoins(int costToFire)
-    {
-        totalCoins.Value -= costToFire;
-    }
+    public NetworkVariable<int> TotalCoins = new NetworkVariable<int>();
 
     public override void OnNetworkSpawn()
     {
@@ -41,9 +34,26 @@ public class CoinWallet : NetworkBehaviour
 
         health.OnDie -= HandleDie;
     }
+
+    public void SpendCoins(int costToFire)
+    {
+        TotalCoins.Value -= costToFire;
+    }
+
+    private void OnTriggerEnter2D(Collider2D col)
+    {
+        if (!col.TryGetComponent<Coin>(out Coin coin)) { return; }
+
+        int coinValue = coin.Collect();
+
+        if (!IsServer) { return; }
+
+        TotalCoins.Value += coinValue;
+    }
+
     private void HandleDie(Health health)
     {
-        int bountyValue = (int)(totalCoins.Value * (bountyPercentage / 100f));
+        int bountyValue = (int)(TotalCoins.Value * (bountyPercentage / 100f));
         int bountyCoinValue = bountyValue / bountyCoinCount;
 
         if (bountyCoinValue < minBountyCoinValue) { return; }
@@ -68,13 +78,5 @@ public class CoinWallet : NetworkBehaviour
             }
         }
     }
-
-    private void OnTriggerEnter2D(Collider2D collision)
-    {
-        int tempCoinValue = 0;
-        if (!collision.gameObject.TryGetComponent<Coin>(out Coin coin)) { return; }
-        tempCoinValue = coin.Collect();
-        if (!IsServer) { return; }
-        totalCoins.Value += tempCoinValue;
-    }
 }
+
